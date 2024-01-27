@@ -43,13 +43,33 @@ io.on("connection", (socket) => {
   // Listen for chat messages in a specific room
   socket.on("chat-message", ({ sender, room, message }) => {
     Room.findOne({ name: room }).then((r) => {
-      r.chats.push({ name: sender, message: message, timestamp: Date.now() });
-      r.save();
-      io.to(room).emit(`chat-message-${room}`, {
-        name: sender,
-        message: message,
-        timestamp: Date.now(),
-      });
+      // spcl commands
+
+      if (sender == r.creator && message == "/delete-chats") {
+        r.chats = [];
+        let new_message = {
+          timestamp: Date.now(),
+          admin: true,
+          message: "creator of this room deleted all messages",
+        };
+        r.chats.push(new_message);
+        r.save();
+        io.to(room).emit(`chat-message-${room}`, new_message);
+        io.to(room).emit("refresh");
+      } else {
+        r.chats.push({ name: sender, message: message, timestamp: Date.now() });
+        r.save();
+        io.to(room).emit(`chat-message-${room}`, {
+          name: sender,
+          message: message,
+          timestamp: Date.now(),
+        });
+        io.to(room).emit("notification", {
+          type: "new message",
+          room: room,
+          msg: message,
+        });
+      }
     });
   });
 
@@ -104,15 +124,23 @@ app.post("/login", (req, res) => {
 app.post("/rooms", (req, res) => {
   console.log(req.body);
   User.findOne({ username: req.body.username })
-    .then((u) => {
-      console.log(u);
-      res.json({
-        rooms: u.rooms ?? [],
-      });
+    .then(async (u) => {
+      if (u) {
+        const rooms = await Room.find(
+          { name: { $in: u.rooms } },
+          "name creator -_id"
+        );
+        res.json({
+          rooms: rooms ?? [],
+        });
+      } else
+        res.status(400).json({
+          msg: "can't find user",
+        });
     })
     .catch((err) => {
       res.status(400).json({
-        msg: "can't find user",
+        msg: "Internal error",
       });
     });
 });
@@ -166,11 +194,29 @@ app.post("/add-room", (req, res) => {
         User.findOne({
           username: user,
         }).then((user) => {
+          if (user.rooms.includes(room.name))
+            return res.send({
+              success: false,
+              msg: "Already in rooms",
+            });
+
           user.rooms.push(name);
           user.save().then(() => {
-            res.send({
-              success: true,
-              msg: "Room Added",
+            room.chats.push({
+              admin: true,
+              timestamp: Date.now(),
+              message: `${user.username} joined this room`,
+            });
+            room.save().then(() => {
+              io.to(room.name).emit(`chat-message-${room.name}`, {
+                admin: true,
+                timestamp: Date.now(),
+                message: `${user.username} joined this room`,
+              });
+              res.send({
+                success: true,
+                msg: "Room Added",
+              });
             });
           });
         });
