@@ -42,6 +42,8 @@ io.on("connection", (socket) => {
   });
 });
 
+app.get("/", (req, res) => res.send("Enchated v2 Backend"));
+
 http.listen(3000, () => {
   console.log("listening on *:3000");
 });
