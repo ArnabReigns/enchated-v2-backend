@@ -41,7 +41,7 @@ io.on("connection", (socket) => {
   // });
 
   // Listen for chat messages in a specific room
-  socket.on("chat-message", ({ sender, room, message }) => {
+  socket.on("chat-message", ({ sender, room, message, ...rest }) => {
     Room.findOne({ name: room }).then((r) => {
       // spcl commands
 
@@ -57,12 +57,13 @@ io.on("connection", (socket) => {
         io.to(room).emit(`chat-message-${room}`, new_message);
         io.to(room).emit("refresh");
       } else {
-        r.chats.push({ name: sender, message: message, timestamp: Date.now() });
+        r.chats.push({ name: sender, message: message, timestamp: Date.now(), ...rest });
         r.save();
         io.to(room).emit(`chat-message-${room}`, {
           name: sender,
           message: message,
           timestamp: Date.now(),
+          ...rest,
         });
         io.to(room).emit("notification", {
           type: "new message",
